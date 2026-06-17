@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Installation {
+  id                   String   @id @default(cuid())
+  githubInstallationId Int      @unique
+  accountLogin         String
+  accountType          String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  repositories Repository[]
+}
+
+model Repository {
+  id             String   @id @default(cuid())
+  installationId String
+  owner          String
+  name           String
+  configJson     Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  qaRuns       QaRun[]
+
+  @@unique([owner, name])
+}
+
+model QaRun {
+  id              String   @id @default(cuid())
+  repositoryId    String
+  prNumber        Int
+  prTitle         String
+  headSha         String
+  trigger         String
+  previewUrl      String?
+  status          String   @default("queued")
+  confidence      Float?
+  planJson        Json?
+  verdictJson     Json?
+  errorMessage    String?
+  reportCommentId BigInt?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  steps      QaStep[]
+  evidence   Evidence[]
+
+  @@index([repositoryId, prNumber])
+  @@index([status])
+}
+
+model QaStep {
+  id           String   @id @default(cuid())
+  runId        String
+  stepIndex    Int
+  name         String
+  action       String
+  status       String   @default("pending")
+  expected     String?
+  observed     String?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  run      QaRun      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  evidence Evidence[]
+
+  @@index([runId])
+}
+
+model Evidence {
+  id          String   @id @default(cuid())
+  runId       String
+  stepId      String?
+  type        String
+  r2Key       String
+  contentType String?
+  label       String?
+  createdAt   DateTime @default(now())
+
+  run  QaRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  step QaStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  @@index([runId])
+}
+
+model DeploymentUrl {
+  id        String   @id @default(cuid())
+  owner     String
+  repo      String
+  prNumber  Int
+  headSha   String
+  url       String
+  provider  String?
+  createdAt DateTime @default(now())
+
+  @@index([owner, repo, prNumber])
+  @@index([owner, repo, headSha])
+}
