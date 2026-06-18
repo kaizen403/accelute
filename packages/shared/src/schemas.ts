@@ -94,6 +94,8 @@ export const QaRunStatusSchema = z.enum([
   "queued",
   "understanding",
   "resolving_preview",
+  "cloning",
+  "starting_app",
   "running",
   "judging",
   "reported",
@@ -106,6 +108,16 @@ export const ParsedQaCommandSchema = z.object({
   previewUrl: z.string().url().optional(),
 });
 
+export const AcceluteRepoConfigSchema = z.object({
+  install: z.union([z.string(), z.array(z.string())]).optional(),
+  start: z.union([z.string(), z.array(z.string())]).optional(),
+  workdir: z.string().optional(),
+  port: z.number().int().positive().optional(),
+  readyPath: z.string().optional(),
+  readyTimeoutMs: z.number().int().positive().optional(),
+  packageManager: z.enum(["pnpm", "yarn", "npm"]).optional(),
+});
+
 export const PrContextSchema = z.object({
   owner: z.string(),
   repo: z.string(),
@@ -113,6 +125,9 @@ export const PrContextSchema = z.object({
   prTitle: z.string(),
   prBody: z.string().optional(),
   headSha: z.string(),
+  headCloneUrl: z.string().optional(),
+  headRef: z.string().optional(),
+  headRepoFullName: z.string().optional(),
   baseRef: z.string().optional(),
   linkedIssue: z
     .object({
@@ -147,6 +162,7 @@ export type Verdict = z.infer<typeof VerdictSchema>;
 export type QaTrigger = z.infer<typeof QaTriggerSchema>;
 export type QaRunStatus = z.infer<typeof QaRunStatusSchema>;
 export type ParsedQaCommand = z.infer<typeof ParsedQaCommandSchema>;
+export type AcceluteRepoConfig = z.infer<typeof AcceluteRepoConfigSchema>;
 export type PrContext = z.infer<typeof PrContextSchema>;
 
 export const QA_COMMENT_MARKER = "<!-- qa-agent-report -->";
