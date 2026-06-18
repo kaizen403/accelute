@@ -27,6 +27,23 @@ export function getGithubApp(): App {
   return app;
 }
 
+export async function getInstallationToken(
+  installationId: number,
+): Promise<string> {
+  if (!env.githubAppId || !env.githubAppPrivateKey) {
+    throw new Error("GitHub App is not configured");
+  }
+
+  const auth = createAppAuth({
+    appId: env.githubAppId,
+    privateKey: env.githubAppPrivateKey,
+    installationId,
+  });
+
+  const result = await auth({ type: "installation" });
+  return result.token;
+}
+
 export async function getInstallationOctokit(
   installationId: number,
 ): Promise<Octokit> {

@@ -20,7 +20,10 @@ export function createGithubWebhooks(): Webhooks {
   webhooks.on("pull_request.opened", async ({ payload }) => {
     if (!payload.installation) return;
 
-    const installation = getWebhookInstallation(payload.installation);
+    const installation = getWebhookInstallation(
+      payload.installation,
+      payload.repository,
+    );
 
     const repo = await ensureRepository({
       installationId: installation.id,
@@ -45,7 +48,10 @@ export function createGithubWebhooks(): Webhooks {
   webhooks.on("pull_request.synchronize", async ({ payload }) => {
     if (!payload.installation) return;
 
-    const installation = getWebhookInstallation(payload.installation);
+    const installation = getWebhookInstallation(
+      payload.installation,
+      payload.repository,
+    );
 
     const repo = await ensureRepository({
       installationId: installation.id,
@@ -71,7 +77,10 @@ export function createGithubWebhooks(): Webhooks {
     if (!payload.installation) return;
     if (!payload.label || !isQaLabel(payload.label.name)) return;
 
-    const installation = getWebhookInstallation(payload.installation);
+    const installation = getWebhookInstallation(
+      payload.installation,
+      payload.repository,
+    );
 
     const repo = await ensureRepository({
       installationId: installation.id,
@@ -100,7 +109,10 @@ export function createGithubWebhooks(): Webhooks {
     const parsed = parseQaComment(payload.comment.body ?? "");
     if (!parsed) return;
 
-    const installation = getWebhookInstallation(payload.installation);
+    const installation = getWebhookInstallation(
+      payload.installation,
+      payload.repository,
+    );
 
     const repo = await ensureRepository({
       installationId: installation.id,

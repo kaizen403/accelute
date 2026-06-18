@@ -8,8 +8,19 @@ export interface WebhookInstallation {
 
 export function getWebhookInstallation(
   installation: { id: number } & Record<string, unknown>,
+  repository?: {
+    owner: { login: string; type?: string };
+  },
 ): WebhookInstallation {
-  const account = installation.account as WebhookInstallation["account"];
+  const installationAccount = installation.account as
+    | WebhookInstallation["account"]
+    | undefined;
+
+  const account = installationAccount ?? {
+    login: repository?.owner.login ?? "unknown",
+    type: repository?.owner.type ?? "User",
+  };
+
   return {
     id: installation.id,
     account,
