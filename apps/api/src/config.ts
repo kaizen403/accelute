@@ -16,6 +16,12 @@ function optionalEnv(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
 }
 
+function optionalBool(name: string, fallback: boolean): boolean {
+  const value = process.env[name];
+  if (value === undefined) return fallback;
+  return value === "1" || value.toLowerCase() === "true";
+}
+
 export const env = {
   nodeEnv: optionalEnv("NODE_ENV", "development"),
   apiPort: Number(optionalEnv("API_PORT", "3001")),
@@ -45,6 +51,14 @@ export const env = {
   r2AccessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
   r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
   r2Bucket: optionalEnv("R2_BUCKET", "qa-agent-evidence"),
+  r2PublicBaseUrl: process.env.R2_PUBLIC_BASE_URL ?? "",
+
+  cloneTmpDir: optionalEnv("CLONE_TMP_DIR", "/tmp/qa-agent-clones"),
+  appStartTimeoutMs: Number(optionalEnv("APP_START_TIMEOUT_MS", "90000")),
+  installTimeoutMs: Number(optionalEnv("INSTALL_TIMEOUT_MS", "300000")),
+  videoMaxSeconds: Number(optionalEnv("VIDEO_MAX_SECONDS", "60")),
+  cloneAndRunEnabled: optionalBool("CLONE_AND_RUN_ENABLED", true),
+  allowForkClones: optionalBool("ALLOW_FORK_CLONES", false),
 
   browserBackend: optionalEnv("BROWSER_BACKEND", "playwright") as
     | "playwright"
