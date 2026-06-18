@@ -4,6 +4,14 @@ import { Router as createRouter } from "express";
 
 import { getEvidenceByKey } from "../evidence/r2.js";
 
+function toJson<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, item) =>
+      typeof item === "bigint" ? item.toString() : item,
+    ),
+  );
+}
+
 export const runsRouter: Router = createRouter();
 
 runsRouter.get("/", async (_req: Request, res: Response) => {
@@ -16,7 +24,7 @@ runsRouter.get("/", async (_req: Request, res: Response) => {
     },
   });
 
-  res.json(runs);
+  res.json(toJson(runs));
 });
 
 runsRouter.get("/:id", async (req: Request, res: Response) => {
@@ -35,13 +43,16 @@ runsRouter.get("/:id", async (req: Request, res: Response) => {
     return;
   }
 
-  res.json(run);
+  res.json(toJson(run));
 });
 
 export const evidenceRouter: Router = createRouter();
 
 evidenceRouter.get("/*splat", async (req: Request, res: Response) => {
-  const key = decodeURIComponent(req.params.splat ?? "");
+  const splat = req.params.splat;
+  const key = decodeURIComponent(
+    typeof splat === "string" ? splat : Array.isArray(splat) ? splat.join("/") : "",
+  );
   const evidence = await getEvidenceByKey(key);
 
   if (!evidence) {

@@ -15,7 +15,7 @@ export function createApp(): Express {
 
   app.post(
     "/webhooks/github",
-    express.raw({ type: "application/json" }),
+    express.raw({ type: () => true }),
     async (req, res) => {
       const signature = req.headers["x-hub-signature-256"];
       const id = req.headers["x-github-delivery"];
@@ -31,12 +31,27 @@ export function createApp(): Express {
       }
 
       try {
-        await webhooks.verifyAndReceive({
-          id,
-          name: name as Parameters<typeof webhooks.verifyAndReceive>[0]["name"],
-          signature,
-          payload: req.body,
-        });
+        const payloadString = Buffer.isBuffer(req.body)
+          ? req.body.toString("utf8")
+          : String(req.body);
+
+        // smee.io re-serializes JSON bodies, which breaks GitHub signatures.
+        if (env.nodeEnv === "development") {
+          await webhooks.receive({
+            id,
+            name,
+            payload: JSON.parse(payloadString),
+          } as Parameters<typeof webhooks.receive>[0]);
+        } else {
+          await webhooks.verifyAndReceive({
+            id,
+            name: name as Parameters<
+              typeof webhooks.verifyAndReceive
+            >[0]["name"],
+            signature,
+            payload: payloadString,
+          });
+        }
 
         res.status(202).json({ ok: true });
       } catch (error) {
