@@ -9,6 +9,7 @@ import type { BrowserSession } from "../browser/types.js";
 import { env, isFireworksConfigured } from "../config.js";
 import { EvidenceStore } from "../evidence/r2.js";
 import { createFireworksModel } from "../llm/fireworks.js";
+import { transcodeWebmToMp4 } from "../video/process.js";
 
 async function pickTargetWithAi(
   session: BrowserSession,
@@ -322,15 +323,30 @@ export async function executeQaPlan(params: {
 
     const video = await session.stopVideo();
     if (video) {
-      sessionEvidence.push(
-        await evidenceStore.upload({
-          filename: "session.webm",
-          body: video,
-          contentType: "video/webm",
-          type: "video",
-          label: "Browser session video",
-        }),
-      );
+      try {
+        const mp4 = await transcodeWebmToMp4(video);
+        sessionEvidence.push(
+          await evidenceStore.upload({
+            filename: "session.mp4",
+            body: mp4,
+            contentType: "video/mp4",
+            type: "video",
+            label: "Demo video (2x)",
+            public: true,
+          }),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sessionEvidence.push(
+          await evidenceStore.upload({
+            filename: "session.webm",
+            body: video,
+            contentType: "video/webm",
+            type: "video",
+            label: `Browser session video (transcode failed: ${message})`,
+          }),
+        );
+      }
     }
 
     await writeFile(

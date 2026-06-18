@@ -14,16 +14,37 @@ function renderChecklist(verdict: Verdict): string {
 }
 
 function renderEvidence(links: EvidenceRef[]): string {
-  if (links.length === 0) {
+  const filtered = links.filter(
+    (item) => !(item.type === "video" && item.key.endsWith("session.mp4")),
+  );
+
+  if (filtered.length === 0) {
     return "- No evidence uploaded";
   }
 
-  return links
+  return filtered
     .map((item) => {
       const label = item.label ?? item.type;
       return item.url ? `- ${label}: ${item.url}` : `- ${label}: \`${item.key}\``;
     })
     .join("\n");
+}
+
+function renderDemoVideo(evidence: EvidenceRef[]): string {
+  const video = evidence.find(
+    (item) => item.type === "video" && item.key.endsWith("session.mp4"),
+  );
+
+  if (!video?.url) {
+    return "";
+  }
+
+  return `### Demo (2x)
+<video src="${video.url}" controls width="640"></video>
+
+[Download demo video](${video.url})
+
+`;
 }
 
 export function renderBlockedReport(reason: string): string {
@@ -33,11 +54,11 @@ export function renderBlockedReport(reason: string): string {
 ${reason}
 
 ### How to fix
-Provide a preview URL using:
+- Provide a preview URL: \`/qa url=https://your-preview-url.com\`
+- Or add a \`.accelute.yml\` in the repo root with \`install\` and \`start\` commands
+- Or ensure the PR contains a supported JS app (Next.js, Vite, Create React App, or static HTML in a pnpm workspace)
 
-\`/qa url=https://your-preview-url.com\`
-
-Then rerun \`/qa\`.`;
+> **Security:** Clone-and-run executes PR code locally without a sandbox. Disable with \`CLONE_AND_RUN_ENABLED=false\` in production if you only trust preview URLs.`;
 }
 
 export function renderQaReport(params: {
@@ -77,7 +98,7 @@ ${plan.goal}
 ${issueSection}### Checks
 ${renderChecklist(verdict)}
 
-### Evidence
+${renderDemoVideo(evidence)}### Evidence
 ${renderEvidence(evidence)}
 
 ### Confidence

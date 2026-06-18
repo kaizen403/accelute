@@ -1,5 +1,8 @@
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
+
 import { prisma } from "@accelute/db";
-import type { QaPlan, StepResult, Verdict } from "@accelute/shared";
+import type { Verdict } from "@accelute/shared";
 
 import { env } from "../config.js";
 import { executeQaPlan } from "../executor/run.js";
@@ -7,7 +10,13 @@ import { EvidenceStore } from "../evidence/r2.js";
 import { getInstallationOctokit } from "../github/app.js";
 import { upsertQaComment } from "../github/comments.js";
 import { judgeQaRun } from "../judge/judge.js";
-import { loadPrContextForRun, resolvePreviewUrl } from "../preview/resolve.js";
+import {
+  loadPrContextForRun,
+  resolvePreviewUrl,
+} from "../preview/resolve.js";
+import { clonePrHead, removeCloneDir } from "../repo/clone.js";
+import { QaBlockedError, isBlockedError } from "../repo/errors.js";
+import { startApp, type AppRunner } from "../repo/runner.js";
 import {
   renderBlockedReport,
   renderErrorReport,
@@ -60,7 +69,76 @@ async function postReportComment(
   });
 }
 
+async function resolvePreviewUrlForRun(
+  runId: string,
+): Promise<{ previewUrl: string; appRunner: AppRunner | null }> {
+  const run = await prisma.qaRun.findUniqueOrThrow({
+    where: { id: runId },
+    include: {
+      repository: { include: { installation: true } },
+    },
+  });
+
+  if (run.previewUrl) {
+    return { previewUrl: run.previewUrl, appRunner: null };
+  }
+
+  await updateRunStatus(runId, "resolving_preview");
+  const deployedUrl = await resolvePreviewUrl(runId);
+  if (deployedUrl) {
+    return { previewUrl: deployedUrl, appRunner: null };
+  }
+
+  if (!env.cloneAndRunEnabled) {
+    throw new QaBlockedError(
+      "No preview deployment URL was found and clone-and-run is disabled. Set CLONE_AND_RUN_ENABLED=true or use `/qa url=<preview>`.",
+    );
+  }
+
+  const context = await loadPrContextForRun(runId);
+
+  if (
+    !context.headRepoFullName ||
+    !context.headRef ||
+    !context.headSha
+  ) {
+    throw new Error("PR head metadata is missing; cannot clone repository.");
+  }
+
+  const baseRepoFullName = `${run.repository.owner}/${run.repository.name}`;
+  if (
+    context.headRepoFullName !== baseRepoFullName &&
+    !env.allowForkClones
+  ) {
+    throw new QaBlockedError(
+      `Fork PR clone is disabled for ${context.headRepoFullName}. Install the app on the fork, set ALLOW_FORK_CLONES=true, or use \`/qa url=<preview>\`.`,
+    );
+  }
+
+  await updateRunStatus(runId, "cloning");
+  const cloneDir = await clonePrHead({
+    runId,
+    installationId: run.repository.installation.githubInstallationId,
+    headRepoFullName: context.headRepoFullName,
+    headRef: context.headRef,
+    headSha: context.headSha,
+  });
+
+  await updateRunStatus(runId, "starting_app");
+  const appRunner = await startApp(cloneDir);
+  const previewUrl = appRunner.url;
+
+  await prisma.qaRun.update({
+    where: { id: runId },
+    data: { previewUrl, headSha: context.headSha },
+  });
+
+  return { previewUrl, appRunner };
+}
+
 export async function runQaPipeline(runId: string): Promise<void> {
+  let appRunner: AppRunner | null = null;
+
   try {
     const run = await prisma.qaRun.findUniqueOrThrow({
       where: { id: runId },
@@ -76,79 +154,80 @@ export async function runQaPipeline(runId: string): Promise<void> {
       data: { planJson: plan },
     });
 
-    await updateRunStatus(runId, "resolving_preview");
-    const previewUrl = await resolvePreviewUrl(runId);
+    try {
+      const resolved = await resolvePreviewUrlForRun(runId);
+      appRunner = resolved.appRunner;
+      const previewUrl = resolved.previewUrl;
 
-    if (!previewUrl) {
-      await updateRunStatus(runId, "blocked");
-      await postReportComment(
+      await updateRunStatus(runId, "running");
+      const { stepResults, sessionEvidence } = await executeQaPlan({
         runId,
-        renderBlockedReport(
-          "QA Agent could not run because no preview deployment URL was found.",
-        ),
-      );
-      return;
+        prNumber: run.prNumber,
+        previewUrl,
+        plan,
+      });
+
+      await updateRunStatus(runId, "judging");
+
+      const consoleEvidence = sessionEvidence.find((e) => e.type === "console");
+      const networkEvidence = sessionEvidence.find((e) => e.type === "network");
+
+      const verdict: Verdict = await judgeQaRun({
+        plan,
+        stepResults,
+        previewUrl,
+        consoleErrors: consoleEvidence ? [consoleEvidence.key] : [],
+        networkErrors: networkEvidence ? [networkEvidence.key] : [],
+      });
+
+      const evidenceStore = new EvidenceStore(runId, run.prNumber);
+      const reportJson = {
+        plan,
+        stepResults,
+        verdict,
+        previewUrl,
+      };
+
+      await evidenceStore.upload({
+        filename: "qa-report.json",
+        body: JSON.stringify(reportJson, null, 2),
+        contentType: "application/json",
+        type: "report",
+        label: "QA report JSON",
+      });
+
+      const refreshedEvidence = await evidenceStore.listForRun();
+
+      const reportBody = renderQaReport({
+        prTitle: run.prTitle,
+        plan,
+        verdict,
+        stepResults,
+        evidence: refreshedEvidence,
+      });
+
+      await prisma.qaRun.update({
+        where: { id: runId },
+        data: {
+          verdictJson: verdict,
+          confidence: verdict.confidence,
+          status: "reported",
+          errorMessage: null,
+        },
+      });
+
+      await postReportComment(runId, reportBody);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      if (isBlockedError(error)) {
+        await updateRunStatus(runId, "blocked", { errorMessage: message });
+        await postReportComment(runId, renderBlockedReport(message));
+        return;
+      }
+
+      throw error;
     }
-
-    await updateRunStatus(runId, "running");
-    const { stepResults, sessionEvidence } = await executeQaPlan({
-      runId,
-      prNumber: run.prNumber,
-      previewUrl,
-      plan,
-    });
-
-    await updateRunStatus(runId, "judging");
-
-    const consoleEvidence = sessionEvidence.find((e) => e.type === "console");
-    const networkEvidence = sessionEvidence.find((e) => e.type === "network");
-
-    const verdict: Verdict = await judgeQaRun({
-      plan,
-      stepResults,
-      previewUrl,
-      consoleErrors: consoleEvidence ? [consoleEvidence.key] : [],
-      networkErrors: networkEvidence ? [networkEvidence.key] : [],
-    });
-
-    const evidenceStore = new EvidenceStore(runId, run.prNumber);
-    const allEvidence = await evidenceStore.listForRun();
-
-    const reportJson = {
-      plan,
-      stepResults,
-      verdict,
-      previewUrl,
-    };
-
-    await evidenceStore.upload({
-      filename: "qa-report.json",
-      body: JSON.stringify(reportJson, null, 2),
-      contentType: "application/json",
-      type: "report",
-      label: "QA report JSON",
-    });
-
-    const refreshedEvidence = await evidenceStore.listForRun();
-
-    const reportBody = renderQaReport({
-      prTitle: run.prTitle,
-      plan,
-      verdict,
-      stepResults,
-      evidence: refreshedEvidence,
-    });
-
-    await prisma.qaRun.update({
-      where: { id: runId },
-      data: {
-        verdictJson: verdict,
-        confidence: verdict.confidence,
-        status: "reported",
-      },
-    });
-
-    await postReportComment(runId, reportBody);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
@@ -161,5 +240,15 @@ export async function runQaPipeline(runId: string): Promise<void> {
     });
 
     await postReportComment(runId, renderErrorReport(message));
+  } finally {
+    if (appRunner) {
+      await appRunner.stop().catch(() => undefined);
+    }
+
+    await removeCloneDir(runId).catch(() => undefined);
+    await rm(join(env.evidenceTmpDir, runId), {
+      recursive: true,
+      force: true,
+    }).catch(() => undefined);
   }
 }
