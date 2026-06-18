@@ -37,6 +37,18 @@ export class EvidenceStore {
     return `pr-${this.prNumber}/${this.runId}/${filename}`;
   }
 
+  getPublicUrl(key: string): string | undefined {
+    if (!env.r2PublicBaseUrl) {
+      return undefined;
+    }
+
+    return `${env.r2PublicBaseUrl.replace(/\/$/, "")}/${key}`;
+  }
+
+  private isPublicVideoKey(key: string): boolean {
+    return key.endsWith("session.mp4") && Boolean(env.r2PublicBaseUrl);
+  }
+
   async upload(params: {
     filename: string;
     body: Buffer | string;
@@ -44,6 +56,7 @@ export class EvidenceStore {
     type: EvidenceRef["type"];
     stepId?: string;
     label?: string;
+    public?: boolean;
   }): Promise<EvidenceRef> {
     const key = this.buildKey(params.filename);
 
@@ -70,7 +83,9 @@ export class EvidenceStore {
       },
     });
 
-    const url = await this.getPresignedUrl(key);
+    const url = params.public
+      ? this.getPublicUrl(key)
+      : await this.getPresignedUrl(key);
 
     return {
       type: params.type,
@@ -106,7 +121,9 @@ export class EvidenceStore {
       rows.map(async (row) => ({
         type: row.type as EvidenceRef["type"],
         key: row.r2Key,
-        url: await this.getPresignedUrl(row.r2Key),
+        url: this.isPublicVideoKey(row.r2Key)
+          ? this.getPublicUrl(row.r2Key)
+          : await this.getPresignedUrl(row.r2Key),
         label: row.label ?? undefined,
       })),
     );
