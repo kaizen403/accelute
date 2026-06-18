@@ -1,0 +1,5 @@
+# Optional overrides for clone-and-run QA (also supports .accelute.json)
+install: pnpm install --frozen-lockfile
+workdir: apps/web
+start: npx next dev -p {port}
+readyPath: /
