@@ -1,0 +1,63 @@
+import type { QaSuite } from "./types.js";
+
+export const luggageCarouselSuite = {
+  id: "luggage-carousel",
+  title: "Luggage Carousel QA",
+  repository: { owner: "kaizen403", name: "luggage-carousel" },
+  cases: [
+    {
+      id: "QA-01",
+      branchPrefix: "qa/01-",
+      branchNameHint: "qa/01-broken-headline",
+      title: "Broken headline typo",
+      difficulty: "easy",
+      type: "bug",
+      expectedVerdict: "should-fail",
+    },
+    {
+      id: "QA-02",
+      branchPrefix: "qa/02-",
+      branchNameHint: "qa/02-terminal-footer",
+      title: "Terminal footer label",
+      difficulty: "easy",
+      type: "feature",
+      expectedVerdict: "should-pass",
+    },
+    {
+      id: "QA-03",
+      branchPrefix: "qa/03-",
+      branchNameHint: "qa/03-broken-drag",
+      title: "Broken drag-and-drop",
+      difficulty: "medium",
+      type: "bug",
+      expectedVerdict: "should-fail",
+    },
+    {
+      id: "QA-04",
+      branchPrefix: "qa/04-",
+      branchNameHint: "qa/04-storage-count",
+      title: "Bags-in-storage counter",
+      difficulty: "medium",
+      type: "feature",
+      expectedVerdict: "should-pass",
+    },
+    {
+      id: "QA-05",
+      branchPrefix: "qa/05-",
+      branchNameHint: "qa/05-wrong-unload-order",
+      title: "Wrong unload order",
+      difficulty: "hard",
+      type: "bug",
+      expectedVerdict: "should-fail",
+    },
+    {
+      id: "QA-06",
+      branchPrefix: "qa/06-",
+      branchNameHint: "qa/06-unload-button-state",
+      title: "Unload button disabled when empty",
+      difficulty: "hard",
+      type: "feature",
+      expectedVerdict: "should-pass",
+    },
+  ],
+} satisfies QaSuite;
