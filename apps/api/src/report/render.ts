@@ -1,4 +1,6 @@
-import type { EvidenceRef, QaPlan, StepResult, Verdict } from "@accelute/shared";
+import type { QaPlan, StepResult, Verdict } from "@accelute/shared";
+
+import type { CommentAttachment } from "../github/assets.js";
 
 const STATUS_EMOJI: Record<Verdict["status"], string> = {
   passed: "✅ Passed",
@@ -13,38 +15,12 @@ function renderChecklist(verdict: Verdict): string {
     .join("\n");
 }
 
-function renderEvidence(links: EvidenceRef[]): string {
-  const filtered = links.filter(
-    (item) => !(item.type === "video" && item.key.endsWith("session.mp4")),
-  );
-
-  if (filtered.length === 0) {
-    return "- No evidence uploaded";
-  }
-
-  return filtered
-    .map((item) => {
-      const label = item.label ?? item.type;
-      return item.url ? `- ${label}: ${item.url}` : `- ${label}: \`${item.key}\``;
-    })
-    .join("\n");
-}
-
-function renderDemoVideo(evidence: EvidenceRef[]): string {
-  const video = evidence.find(
-    (item) => item.type === "video" && item.key.endsWith("session.mp4"),
-  );
-
-  if (!video?.url) {
+function renderAttachments(attachments: CommentAttachment[]): string {
+  if (attachments.length === 0) {
     return "";
   }
 
-  return `### Demo (2x)
-<video src="${video.url}" controls width="640"></video>
-
-[Download demo video](${video.url})
-
-`;
+  return `${attachments.map((item) => item.markdown).join("\n\n")}\n\n`;
 }
 
 export function renderBlockedReport(reason: string): string {
@@ -65,47 +41,37 @@ export function renderQaReport(params: {
   prTitle: string;
   plan: QaPlan;
   verdict: Verdict;
-  stepResults: StepResult[];
-  evidence: EvidenceRef[];
+  attachments: CommentAttachment[];
+  clientSummary: string;
+  reportUrl: string;
 }): string {
-  const { prTitle, plan, verdict, evidence } = params;
+  const { plan, verdict, attachments, clientSummary, reportUrl } = params;
   const statusLine = STATUS_EMOJI[verdict.status];
 
   const issueSection =
     verdict.status === "failed"
-      ? `### Issue found\n${verdict.reason}\n\n`
+      ? `### Issue\n${verdict.reason}\n\n`
       : verdict.status === "inconclusive"
-        ? `### Reason\n${verdict.reason}\n\nHuman QA recommended.\n\n`
+        ? `### Note\n${verdict.reason}\n\n`
         : "";
 
-  const finalVerdict =
-    verdict.status === "passed"
-      ? "The requested acceptance checks passed."
-      : verdict.status === "failed"
-        ? verdict.suggestedNextStep ??
-          "Fix the reported issue and rerun `/qa retry`."
-        : verdict.suggestedNextStep ??
-          "Review the evidence and rerun `/qa` if needed.";
+  const footer =
+    verdict.status === "failed" && verdict.suggestedNextStep
+      ? `${verdict.suggestedNextStep}\n\n`
+      : "";
 
-  return `## QA Agent Result: ${statusLine}
+  return `## QA Agent · ${statusLine}
 
-### Tested PR
-${prTitle}
+${clientSummary}
 
-### Goal
-${plan.goal}
+**Goal:** ${plan.goal}
 
-${issueSection}### Checks
+${issueSection}### What we checked
 ${renderChecklist(verdict)}
 
-${renderDemoVideo(evidence)}### Evidence
-${renderEvidence(evidence)}
+${renderAttachments(attachments)}**Confidence:** ${verdict.confidence}% · [Full report](${reportUrl})
 
-### Confidence
-${verdict.confidence}%
-
-### Final verdict
-${finalVerdict}`;
+${footer}`.trimEnd();
 }
 
 export function renderErrorReport(error: string): string {

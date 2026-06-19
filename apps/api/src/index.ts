@@ -4,6 +4,8 @@ import express, { type Express } from "express";
 import { env } from "./config.js";
 import { createGithubWebhooks } from "./github/webhooks.js";
 import { evidenceRouter, runsRouter } from "./routes/runs.js";
+import { reportsRouter } from "./routes/reports.js";
+import { suitesRouter } from "./routes/suites.js";
 import { devRouter } from "./routes/dev.js";
 
 export function createApp(): Express {
@@ -69,6 +71,8 @@ export function createApp(): Express {
   });
 
   app.use("/runs", runsRouter);
+  app.use("/reports", reportsRouter);
+  app.use("/suites", suitesRouter);
   app.use("/evidence", evidenceRouter);
   app.use("/dev", devRouter);
 

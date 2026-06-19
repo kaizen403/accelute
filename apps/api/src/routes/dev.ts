@@ -14,6 +14,7 @@ devRouter.post("/trigger", async (req: Request, res: Response) => {
     prNumber = 1,
     prTitle = "Demo PR",
     headSha = "abc123",
+    headRef,
     previewUrl,
   } = req.body as {
     owner?: string;
@@ -21,6 +22,7 @@ devRouter.post("/trigger", async (req: Request, res: Response) => {
     prNumber?: number;
     prTitle?: string;
     headSha?: string;
+    headRef?: string;
     previewUrl?: string;
   };
 
@@ -49,6 +51,7 @@ devRouter.post("/trigger", async (req: Request, res: Response) => {
     prNumber,
     prTitle,
     headSha,
+    headRef,
     trigger: "manual",
     previewUrl,
   });

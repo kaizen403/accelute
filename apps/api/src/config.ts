@@ -35,6 +35,8 @@ export const env = {
   githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET ?? "",
   githubClientId: process.env.GITHUB_CLIENT_ID ?? "",
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
+  // Browser user_session cookie — enables native GitHub video/image attachments in PR comments.
+  githubUserSession: process.env.GITHUB_USER_SESSION ?? "",
 
   fireworksApiKey: process.env.FIREWORKS_API_KEY ?? "",
   fireworksModel: optionalEnv(

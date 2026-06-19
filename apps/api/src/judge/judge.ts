@@ -11,10 +11,12 @@ function buildFallbackVerdict(
   const failed = stepResults.filter((step) => step.status === "failed");
   const passed = stepResults.filter((step) => step.status === "passed");
 
-  const checklist = stepResults.map((step) => ({
-    label: step.description,
-    ok: step.status === "passed",
-  }));
+  const checklist = stepResults
+    .filter((step) => step.action !== "check_console" || step.status === "failed")
+    .map((step) => ({
+      label: step.description,
+      ok: step.status === "passed",
+    }));
 
   if (failed.length > 0) {
     return {
@@ -39,7 +41,7 @@ function buildFallbackVerdict(
   return {
     status: "passed",
     confidence: 80,
-    reason: `All ${passed.length} executed checks passed for: ${plan.goal}`,
+    reason: `The acceptance criteria appear met: ${plan.goal}`,
     checklist,
   };
 }
@@ -59,15 +61,22 @@ export async function judgeQaRun(params: {
   const model = createFireworksModel(0.1);
   const structured = model.withStructuredOutput(VerdictSchema);
 
-  const prompt = `You are an independent QA judge. Do not assume success just because steps ran.
-Evaluate whether the PR acceptance criteria are actually met.
+  const prompt = `You are an independent QA judge evaluating whether a pull request's acceptance criteria are actually met.
+
+Do NOT pass just because steps ran without throwing. Judge the user-facing outcome.
 
 Return:
 - status: passed | failed | inconclusive | blocked
 - confidence: 0-100
-- reason: concise explanation
-- checklist: array of { label, ok }
-- suggestedNextStep: optional guidance for developers
+- reason: concise explanation a developer can act on (cite the failing behavior, not just step ids)
+- checklist: array of { label, ok } aligned to what mattered for this PR (omit trivial diagnostic items unless they failed)
+- suggestedNextStep: optional — specific fix guidance on failure
+
+Classify failures when possible:
+- product bug (UI/logic wrong)
+- environment/preview issue (app didn't start, wrong URL)
+- flaky/timing
+- plan gap (couldn't test the real change)
 
 Goal: ${params.plan.goal}
 Expected result: ${params.plan.expected_result}
