@@ -48,6 +48,7 @@ export async function createQaRun(params: {
   prNumber: number;
   prTitle: string;
   headSha: string;
+  headRef?: string;
   trigger: QaTrigger;
   previewUrl?: string;
 }) {
@@ -57,6 +58,7 @@ export async function createQaRun(params: {
       prNumber: params.prNumber,
       prTitle: params.prTitle,
       headSha: params.headSha,
+      headRef: params.headRef,
       trigger: params.trigger,
       previewUrl: params.previewUrl,
       status: "queued",

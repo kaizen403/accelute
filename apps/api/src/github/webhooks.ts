@@ -38,6 +38,7 @@ export function createGithubWebhooks(): Webhooks {
       prNumber: payload.pull_request.number,
       prTitle: payload.pull_request.title,
       headSha: payload.pull_request.head.sha,
+      headRef: payload.pull_request.head.ref,
       trigger: mapTrigger("pr_opened"),
     });
 
@@ -66,6 +67,7 @@ export function createGithubWebhooks(): Webhooks {
       prNumber: payload.pull_request.number,
       prTitle: payload.pull_request.title,
       headSha: payload.pull_request.head.sha,
+      headRef: payload.pull_request.head.ref,
       trigger: mapTrigger("pr_updated"),
     });
 
@@ -95,6 +97,7 @@ export function createGithubWebhooks(): Webhooks {
       prNumber: payload.pull_request.number,
       prTitle: payload.pull_request.title,
       headSha: payload.pull_request.head.sha,
+      headRef: payload.pull_request.head.ref,
       trigger: mapTrigger("label"),
     });
 
@@ -134,6 +137,7 @@ export function createGithubWebhooks(): Webhooks {
       prNumber: payload.issue.number,
       prTitle: pr.data.title,
       headSha: pr.data.head.sha,
+      headRef: pr.data.head.ref,
       trigger: parsed.command === "retry" ? "retry" : "comment",
       previewUrl: parsed.previewUrl,
     });
