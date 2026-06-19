@@ -39,6 +39,7 @@ model QaRun {
   prNumber        Int
   prTitle         String
   headSha         String
+  headRef         String?
   trigger         String
   previewUrl      String?
   status          String   @default("queued")
