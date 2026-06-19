@@ -5,9 +5,12 @@ import { prisma } from "@accelute/db";
 import type { Verdict } from "@accelute/shared";
 
 import { env } from "../config.js";
+import { curateEvidenceForComment } from "../evidence/curate.js";
+import { pickPosterScreenshotKey } from "../evidence/poster.js";
 import { executeQaPlan } from "../executor/run.js";
 import { EvidenceStore } from "../evidence/r2.js";
 import { getInstallationOctokit } from "../github/app.js";
+import { buildCommentAttachments, buildReportUrl } from "../github/assets.js";
 import { upsertQaComment } from "../github/comments.js";
 import { judgeQaRun } from "../judge/judge.js";
 import {
@@ -142,22 +145,26 @@ export async function runQaPipeline(runId: string): Promise<void> {
   try {
     const run = await prisma.qaRun.findUniqueOrThrow({
       where: { id: runId },
-      include: { repository: true },
-    });
-
-    await updateRunStatus(runId, "understanding");
-    const context = await loadPrContextForRun(runId);
-    const plan = await generateQaPlan(context);
-
-    await prisma.qaRun.update({
-      where: { id: runId },
-      data: { planJson: plan },
+      include: { repository: { include: { installation: true } } },
     });
 
     try {
       const resolved = await resolvePreviewUrlForRun(runId);
       appRunner = resolved.appRunner;
       const previewUrl = resolved.previewUrl;
+
+      await updateRunStatus(runId, "understanding");
+      const context = await loadPrContextForRun(runId);
+      const plan = await generateQaPlan({
+        ...context,
+        previewUrlOverride: previewUrl,
+        deploymentUrl: previewUrl,
+      });
+
+      await prisma.qaRun.update({
+        where: { id: runId },
+        data: { planJson: plan },
+      });
 
       await updateRunStatus(runId, "running");
       const { stepResults, sessionEvidence } = await executeQaPlan({
@@ -181,11 +188,21 @@ export async function runQaPipeline(runId: string): Promise<void> {
       });
 
       const evidenceStore = new EvidenceStore(runId, run.prNumber);
+      const refreshedEvidence = await evidenceStore.listForRun();
+
+      const curation = await curateEvidenceForComment({
+        plan,
+        stepResults,
+        verdict,
+        evidence: refreshedEvidence,
+      });
+
       const reportJson = {
         plan,
         stepResults,
         verdict,
         previewUrl,
+        curation,
       };
 
       await evidenceStore.upload({
@@ -196,14 +213,37 @@ export async function runQaPipeline(runId: string): Promise<void> {
         label: "QA report JSON",
       });
 
-      const refreshedEvidence = await evidenceStore.listForRun();
+      const reportUrl = buildReportUrl(runId);
+      const posterScreenshotKey = pickPosterScreenshotKey({
+        evidence: refreshedEvidence,
+        stepResults,
+        highlightStepId: curation.highlightStepId,
+        commentScreenshotKeys: curation.commentScreenshotKeys,
+      });
+      const reportOctokit = await getInstallationOctokit(
+        run.repository.installation.githubInstallationId,
+      );
+      const attachments = await buildCommentAttachments({
+        octokit: reportOctokit,
+        owner: run.repository.owner,
+        repo: run.repository.name,
+        prNumber: run.prNumber,
+        runId,
+        reportUrl,
+        evidence: refreshedEvidence,
+        evidenceStore,
+        selectedScreenshotKeys: curation.commentScreenshotKeys,
+        posterScreenshotKey: posterScreenshotKey ?? undefined,
+        showSessionPreview: curation.showSessionPreview,
+      });
 
       const reportBody = renderQaReport({
         prTitle: run.prTitle,
         plan,
         verdict,
-        stepResults,
-        evidence: refreshedEvidence,
+        attachments,
+        clientSummary: curation.clientSummary,
+        reportUrl,
       });
 
       await prisma.qaRun.update({
