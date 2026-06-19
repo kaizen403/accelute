@@ -20,6 +20,14 @@ export const QaStepTargetSchema = z.object({
   label: z.string().optional(),
 });
 
+export const QaStepCaptureSchema = z.enum(["always", "on_failure", "never"]);
+
+export const QaStepPrioritySchema = z.enum([
+  "critical",
+  "supporting",
+  "diagnostic",
+]);
+
 export const QaStepAssertionSchema = z.object({
   type: z.enum(["visible", "text", "url", "console_clean"]),
   expected: z.string().optional(),
@@ -32,6 +40,8 @@ export const QaStepSchema = z.object({
   target: QaStepTargetSchema.optional(),
   value: z.string().optional(),
   assertion: QaStepAssertionSchema.optional(),
+  capture: QaStepCaptureSchema.optional(),
+  priority: QaStepPrioritySchema.optional(),
 });
 
 export const QaPlanSchema = z.object({
@@ -79,6 +89,13 @@ export const VerdictSchema = z.object({
   reason: z.string(),
   checklist: z.array(ChecklistItemSchema),
   suggestedNextStep: z.string().optional(),
+});
+
+export const EvidenceCurationSchema = z.object({
+  clientSummary: z.string(),
+  highlightStepId: z.string().optional(),
+  commentScreenshotKeys: z.array(z.string()).max(3).default([]),
+  showSessionPreview: z.boolean().default(true),
 });
 
 export const QaTriggerSchema = z.enum([
@@ -152,6 +169,8 @@ export const PrContextSchema = z.object({
 
 export type QaStepAction = z.infer<typeof QaStepActionSchema>;
 export type QaStepTarget = z.infer<typeof QaStepTargetSchema>;
+export type QaStepCapture = z.infer<typeof QaStepCaptureSchema>;
+export type QaStepPriority = z.infer<typeof QaStepPrioritySchema>;
 export type QaStep = z.infer<typeof QaStepSchema>;
 export type QaPlan = z.infer<typeof QaPlanSchema>;
 export type StepStatus = z.infer<typeof StepStatusSchema>;
@@ -159,6 +178,7 @@ export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
 export type StepResult = z.infer<typeof StepResultSchema>;
 export type VerdictStatus = z.infer<typeof VerdictStatusSchema>;
 export type Verdict = z.infer<typeof VerdictSchema>;
+export type EvidenceCuration = z.infer<typeof EvidenceCurationSchema>;
 export type QaTrigger = z.infer<typeof QaTriggerSchema>;
 export type QaRunStatus = z.infer<typeof QaRunStatusSchema>;
 export type ParsedQaCommand = z.infer<typeof ParsedQaCommandSchema>;
