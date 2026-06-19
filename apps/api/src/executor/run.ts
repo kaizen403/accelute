@@ -6,6 +6,7 @@ import type { QaPlan, QaStep, StepResult } from "@accelute/shared";
 
 import { getBrowserBackend } from "../browser/index.js";
 import type { BrowserSession } from "../browser/types.js";
+import { shouldCaptureScreenshot } from "../evidence/capture.js";
 import { env, isFireworksConfigured } from "../config.js";
 import { EvidenceStore } from "../evidence/r2.js";
 import { createFireworksModel } from "../llm/fireworks.js";
@@ -33,6 +34,29 @@ async function pickTargetWithAi(
   return answer.toUpperCase().includes("YES");
 }
 
+async function captureScreenshot(params: {
+  session: BrowserSession;
+  evidenceStore: EvidenceStore;
+  stepDbId: string;
+  step: QaStep;
+  suffix: string;
+  failed: boolean;
+}): Promise<StepResult["evidence"][number] | null> {
+  if (!shouldCaptureScreenshot(params.step, params.failed)) {
+    return null;
+  }
+
+  const shot = await params.session.screenshot(`${params.step.id}-${params.suffix}`);
+  return params.evidenceStore.upload({
+    filename: `${params.step.id}-${params.suffix}.png`,
+    body: shot.buffer,
+    contentType: "image/png",
+    type: "screenshot",
+    stepId: params.stepDbId,
+    label: shot.label,
+  });
+}
+
 async function executeStep(params: {
   session: BrowserSession;
   step: QaStep;
@@ -47,41 +71,53 @@ async function executeStep(params: {
   try {
     switch (step.action) {
       case "navigate": {
-        await session.goto(step.value ?? previewUrl);
+        const url =
+          step.value && /^https?:\/\//i.test(step.value)
+            ? step.value
+            : previewUrl;
+        await session.goto(url);
+        const shot = await captureScreenshot({
+          session,
+          evidenceStore,
+          stepDbId,
+          step,
+          suffix: "loaded",
+          failed: false,
+        });
+        if (shot) {
+          evidence.push(shot);
+        }
         break;
       }
       case "click": {
         if (!step.target) throw new Error("Click step requires a target");
-        const before = await session.screenshot(`${step.id}-before`);
-        evidence.push(
-          await evidenceStore.upload({
-            filename: `${step.id}-before.png`,
-            body: before.buffer,
-            contentType: "image/png",
-            type: "screenshot",
-            stepId: stepDbId,
-            label: before.label,
-          }),
-        );
 
         try {
           await session.click(step.target);
         } catch (error) {
+          const before = await captureScreenshot({
+            session,
+            evidenceStore,
+            stepDbId,
+            step,
+            suffix: "before",
+            failed: true,
+          });
+          if (before) evidence.push(before);
+
           usedAiFallback = await pickTargetWithAi(session, step);
           if (!usedAiFallback) throw error;
         }
 
-        const after = await session.screenshot(`${step.id}-after`);
-        evidence.push(
-          await evidenceStore.upload({
-            filename: `${step.id}-after.png`,
-            body: after.buffer,
-            contentType: "image/png",
-            type: "screenshot",
-            stepId: stepDbId,
-            label: after.label,
-          }),
-        );
+        const after = await captureScreenshot({
+          session,
+          evidenceStore,
+          stepDbId,
+          step,
+          suffix: "after",
+          failed: false,
+        });
+        if (after) evidence.push(after);
         break;
       }
       case "type": {
@@ -101,19 +137,18 @@ async function executeStep(params: {
       case "assert_visible": {
         if (!step.target) throw new Error("assert_visible requires a target");
         const visible = await session.assertVisible(step.target);
-        const shot = await session.screenshot(`${step.id}-assert`);
-        evidence.push(
-          await evidenceStore.upload({
-            filename: `${step.id}-assert.png`,
-            body: shot.buffer,
-            contentType: "image/png",
-            type: "screenshot",
-            stepId: stepDbId,
-            label: shot.label,
-          }),
-        );
 
         if (!visible) {
+          const shot = await captureScreenshot({
+            session,
+            evidenceStore,
+            stepDbId,
+            step,
+            suffix: "assert",
+            failed: true,
+          });
+          if (shot) evidence.push(shot);
+
           return {
             stepId: step.id,
             description: step.description,
@@ -125,6 +160,16 @@ async function executeStep(params: {
             evidence,
           };
         }
+
+        const shot = await captureScreenshot({
+          session,
+          evidenceStore,
+          stepDbId,
+          step,
+          suffix: "assert",
+          failed: false,
+        });
+        if (shot) evidence.push(shot);
         break;
       }
       case "assert_text": {
@@ -207,6 +252,18 @@ async function executeStep(params: {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+
+    const failureShot = await captureScreenshot({
+      session,
+      evidenceStore,
+      stepDbId,
+      step,
+      suffix: "error",
+      failed: true,
+    }).catch(() => null);
+    if (failureShot) {
+      evidence.push(failureShot);
+    }
 
     await prisma.qaStep.update({
       where: { id: stepDbId },
